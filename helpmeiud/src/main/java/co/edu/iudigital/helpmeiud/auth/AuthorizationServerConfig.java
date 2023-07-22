@@ -1,0 +1,125 @@
+package co.edu.iudigital.helpmeiud.auth;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
+import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerEndpointsConfigurer;
+import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerSecurityConfigurer;
+import org.springframework.security.oauth2.provider.token.TokenEnhancerChain;
+import org.springframework.security.oauth2.provider.token.store.JwtAccessTokenConverter;
+import org.springframework.security.oauth2.provider.token.store.JwtTokenStore;
+
+import java.util.Arrays;
+/**
+ * proceso de autenticación por OAuth2: login, etc.
+ * todo lo relacionado con el login, autenticación con oauth2, creación del token
+ * validación del token, toda esa parte
+ * @author DANIELAVALLEJO
+ *
+ */
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter{
+	
+	@Value("${security.jwt.client-service}")
+	private String client;
+	
+	@Value("${security.jwt.password-service}")
+	private String secret;
+	
+	@Value("${security.jwt.scope-read}")
+	private String read;
+	
+	@Value("${security.jwt.scope-write}")
+	private String write;
+	
+	@Value("${security.jwt.grant-password}")
+	private String grantPassword;
+	
+	@Value("${security.jwt.grant-refresh}")
+	private String grantRefresh;
+	
+	@Value("${security.jwt.token-validity-seconds}")
+	private Integer accessTime;
+	
+	@Value("${security.jwt.refresh-validity-seconds}")
+	private Integer refreshTime;
+
+	@Autowired
+	private BCryptPasswordEncoder passwordEncoder;
+
+	@Autowired
+	@Qualifier("authenticationManager")
+	private AuthenticationManager authenticationManager;
+
+	@Autowired
+	private TokenMoreInfo tokenMoreInfo;
+	
+
+	
+	/**
+	 * Primero configuramos el endpoint de autorización
+	 * este lo que hace es realizar todo ese proceso de autenticación y también
+	 * valida el token y firma, todo ese proceso
+	 * +
+	 */
+	@Override
+	public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+
+		TokenEnhancerChain tokenEnhancerChain = new TokenEnhancerChain();
+		tokenEnhancerChain.setTokenEnhancers(Arrays.asList(tokenMoreInfo, accessTokenConverter()));
+
+		endpoints.authenticationManager(authenticationManager)
+				.tokenStore(tokenStore())
+				.accessTokenConverter(accessTokenConverter())
+				.tokenEnhancer(tokenEnhancerChain);//
+	}
+
+	@Override
+	public void configure(AuthorizationServerSecurityConfigurer security) throws Exception {
+		security
+		.passwordEncoder(passwordEncoder)
+		.tokenKeyAccess("permitAll()")
+				.checkTokenAccess("isAuthenticated()");
+
+	}
+
+	@Override
+	public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+		clients
+		.inMemory()
+		.withClient(client)
+		.secret(passwordEncoder.encode(secret))
+		.scopes(read, write)
+		.authorizedGrantTypes(grantPassword, grantRefresh)
+		.accessTokenValiditySeconds(accessTime)
+		.refreshTokenValiditySeconds(refreshTime);
+	}
+
+
+	/**
+	 * se encarga de crear el token y almacenarlo
+	 * pero JWtAccess trabaja con el, entonces se pone opcional
+	 * pero lo hacemos explicitamente 
+	 * @return
+	 */
+	@Bean
+	public JwtTokenStore tokenStore() {
+		return new JwtTokenStore(accessTokenConverter());
+	}
+
+	@Bean
+	public JwtAccessTokenConverter accessTokenConverter() {
+		JwtAccessTokenConverter jwtAccessTokenConverter = new JwtAccessTokenConverter();
+		jwtAccessTokenConverter.setSigningKey(JwtConfig.RSA_PRIVATE);
+		jwtAccessTokenConverter.setVerifierKey(JwtConfig.RSA_PUBLIC);
+		return new JwtAccessTokenConverter();
+	}
+}
